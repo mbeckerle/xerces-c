@@ -34,6 +34,14 @@
 #endif
 #include <xercesc/util/OutOfMemoryException.hpp>
 
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <cstring>
+#include <cstddef>
+#include <regex>
+#include <sstream>
+
 // ---------------------------------------------------------------------------
 //  Local helper methods
 // ---------------------------------------------------------------------------
@@ -48,27 +56,69 @@ void usage()
             "    -l          Indicate the input file is a List File that has a list of xml files.\n"
             "                Default to off (Input file is an XML file).\n"
             "    -v=xxx      Validation scheme [always | never | auto*].\n"
-            "    -f          Enable full schema constraint checking processing. Defaults to off.\n"
-            "    -p          Enable namespace-prefixes feature. Defaults to off.\n"
-            "    -n          Disable namespace processing. Defaults to on.\n"
+            "    -f          Disable full schema constraint checking processing. Defaults to enabled.\n"
+            "    -d          When schema validation is on, skip DTD. Default is to skip DTD validation if schema validation is on.\n"
+            "    -p          Disable namespace-prefixes feature. Defaults to enabled.\n"
+            "    -n          Disable namespace processing. Defaults to enabled.\n"
             "                NOTE: THIS IS OPPOSITE FROM OTHER SAMPLES.\n"
-            "    -s          Disable schema processing. Defaults to on.\n"
+            "    -s          Disable schema processing. Defaults to enabled.\n"
             "                NOTE: THIS IS OPPOSITE FROM OTHER SAMPLES.\n"
-            "    -i          Disable identity constraint checking. Defaults to on.\n"
+            "    -i          Disable identity constraint checking. Defaults to enabled.\n"
             "                NOTE: THIS IS OPPOSITE FROM OTHER SAMPLES.\n"
             "    -locale=ll_CC specify the locale, default: en_US.\n"
+            "    -noNameSpaceSchema=schemafile specify a no-namespace schema file. Implies -v=always.\n"
+            "    -schema=schemafile specify a schema file. Implies -v=always.\n"
             "    -?          Show this help.\n\n"
             "  * = Default if not provided explicitly.\n"
          << XERCES_STD_QUALIFIER endl;
 }
 
+/**
+ * Gets the Target Namespace URI from an XML Schema (XSD) file.
+ * 
+ * Does this by string/regex hacking. Not using an XML parser.
+ * Hence, this can be fooled by targetNamespace declaration being
+ * commented out, or being spread across lines, or containing quoted
+ * characters that would fool the regex. (quotation marks)
+ * Or containing whitespace, even if escaped.
+ *
+ * Also this is assuming the charset of the XSD file is ascii-based as
+ * in ascii or utf-8. If it's UTF-16 this will fail.
+*/
+const char* getTargetNamespaceURIFromXMLSchemaFile(const char* xsdFile) {
+    const char* result;
+    std::ifstream file(xsdFile); 
+    std::string line;
+
+    if (!file.is_open()) {
+        std::cerr << "Could not open the file '" << xsdFile << "'." << std::endl;
+        return nullptr;
+    }
+
+    // it is group 2 of this pattern which is 1 to 80 non whitespace chars
+    // that we want. 
+    std::regex pattern("\\s*targetNamespace=(['\"])(\\S{1,80})\\1\\s?");
+    std::smatch match;
+    while (std::getline(file, line)) {
+        if (std::regex_search(line, match, pattern)) {
+            // for (size_t i = 0; i < match.size(); ++i) {
+            //     std::ssub_match sub_match = match[i];
+            //     std::string piece = sub_match.str();
+            //     std::cout << "Match " << i << ": " << piece << std::endl;
+            // }
+        result = strdup(match[2].str().c_str());
+        break;
+        }
+    }
+    file.close();
+    return result;
+}
 
 // ---------------------------------------------------------------------------
 //  Program entry point
 // ---------------------------------------------------------------------------
 int main(int argC, char* argV[])
 {
-
     // Check command line and extract arguments.
     if (argC < 2)
     {
@@ -78,24 +128,30 @@ int main(int argC, char* argV[])
 
     const char*                  xmlFile      = 0;
     SAX2XMLReader::ValSchemes    valScheme    = SAX2XMLReader::Val_Auto;
+    const char*                  noNameSpaceSchemaFile = 0;
+    const char*                  targetSchemaFile = 0;
     bool                         doNamespaces = true;
     bool                         doSchema = true;
-    bool                         schemaFullChecking = false;
+    bool                         schemaFullChecking = true; // changed. Makes no sense for this to be off if identityConstraintChecking is on by default
     bool                         identityConstraintChecking = true;
     bool                         doList = false;
     bool                         errorOccurred = false;
-    bool                         namespacePrefixes = false;
+    bool                         namespacePrefixes = true; // changed. Makes no sense for this to be off by default.
     bool                         recognizeNEL = false;
     char                         localeStr[64];
+    bool                         skipDTD = true;
     memset(localeStr, 0, sizeof localeStr);
 
     int argInd;
+    int sz;
+
     for (argInd = 1; argInd < argC; argInd++)
     {
+        char* arg = argV[argInd];
+
         // Break out on first parm not starting with a dash
         if (argV[argInd][0] != '-')
             break;
-
         // Watch for special case help request
         if (!strcmp(argV[argInd], "-?"))
         {
@@ -128,6 +184,11 @@ int main(int argC, char* argV[])
               ||  !strcmp(argV[argInd], "-S"))
         {
             doSchema = false;
+        }
+         else if (!strcmp(argV[argInd], "-d")
+              ||  !strcmp(argV[argInd], "-D"))
+        {
+            skipDTD = true;
         }
          else if (!strcmp(argV[argInd], "-f")
               ||  !strcmp(argV[argInd], "-F"))
@@ -162,11 +223,41 @@ int main(int argC, char* argV[])
              // Get out the end of line
              strncpy(localeStr, &(argV[argInd][8]), sizeof localeStr);
         }
-        else
+         else if (!strncmp(arg, "-noNameSpaceSchema=", sz = sizeof("-noNameSpaceSchema=") - 1)) 
         {
-            XERCES_STD_QUALIFIER cerr << "Unknown option '" << argV[argInd]
+             noNameSpaceSchemaFile = arg + sz;
+        }
+         else if (!strncmp(arg, "-schema=", sz = sizeof("-schema=") - 1))
+        {
+             targetSchemaFile = arg + sz;
+        }
+         else
+        {
+             XERCES_STD_QUALIFIER cerr << "Unknown option '" << arg
                 << "', ignoring it\n" << XERCES_STD_QUALIFIER endl;
         }
+    }
+
+    // Look for conflicting options
+    // -s, -n, and -p cannot be used with -schema or -noNameSpaceSchema
+    if (targetSchemaFile != 0 || noNameSpaceSchemaFile != 0) {
+        // there is a schema provided so
+        // namespace-prefixes must be enabled,
+        // namespace processing must be enabled,
+        // schema processing must be enabled.
+      if (!doSchema ||
+          !doNamespaces ||
+      !namespacePrefixes) {
+            std::cerr << "Options -s, -n, and -p are incompatible with -schema and -noNameSpaceSchema." << std::endl;
+            usage();
+            return 2;
+      }
+      if (valScheme == SAX2XMLReader::Val_Never) {
+                std::cerr << "Options -v=never is incompatible with -schema and -noNameSpaceSchema." << std::endl;
+                usage();
+                return 2;
+      }
+      valScheme = SAX2XMLReader::Val_Always;
     }
 
     //
@@ -215,6 +306,13 @@ int main(int argC, char* argV[])
     parser->setFeature(XMLUni::fgXercesSchemaFullChecking, schemaFullChecking);
     parser->setFeature(XMLUni::fgXercesIdentityConstraintChecking, identityConstraintChecking);
     parser->setFeature(XMLUni::fgSAX2CoreNameSpacePrefixes, namespacePrefixes);
+    parser->setFeature(XMLUni::fgXercesSkipDTDValidation, skipDTD);
+    if (skipDTD) {
+        parser->setProperty(XMLUni::fgXercesScannerName, (void *)XMLUni::fgSGXMLScanner);
+    }
+    else {
+        parser->setProperty(XMLUni::fgXercesScannerName, (void *)XMLUni::fgIGXMLScanner);
+    }
 
     if (valScheme == SAX2XMLReader::Val_Auto)
     {
@@ -230,7 +328,57 @@ int main(int argC, char* argV[])
         parser->setFeature(XMLUni::fgSAX2CoreValidation, true);
         parser->setFeature(XMLUni::fgXercesDynamic, false);
     }
-
+    if (noNameSpaceSchemaFile != NULL) {
+        /* Need to set the schema for no-namespace */
+        XMLCh *schemaPath = XMLString::transcode(noNameSpaceSchemaFile);
+        parser->setProperty(
+                XMLUni::fgXercesSchemaExternalNoNameSpaceSchemaLocation,
+                schemaPath);
+        XMLString::release(&schemaPath);
+    }
+    else if (targetSchemaFile != NULL) {
+        //
+        // This is rather painful. 
+        //
+        // Xerces C simply doesn't support the behavior we want, which is 
+        // to stipulate the schema file which MUST MATCH the namespace 
+        // and ROOT element of the schema file being parsed.
+        //
+        // It just doesn't do that. 
+        //
+        // Rather, the string we pass for the schema location
+        // is a alternating list of namespaceURI and fileLocation strings.
+        // This is just like with xsi:schemaLocation if it was in the instance document. 
+        //
+        // The problem is that we don't know (nor care) about the namespace. It
+        // either works, or doesn't.
+        //
+        // But we can't even ask Xerces C to do the parse and validate unless
+        // we know the URI of the targetNamespace. 
+        // So we have to get it from the 
+        // targetNamespace attributes of the xs:schema of the schema file, or
+        // from the namespace of the root element of the instance document
+        // 
+        // We're going to get it by string hacking of the XML schema looking for 
+        // the targetNamespace declaration. 
+        //
+        // This is fallable, because it's not doing an XML parse of the schema 
+        // so a commented out targetNamespace declaration, or one that spans lines
+        // would fool our logic.
+        //
+        // It's actually worse than that, as we're just assuming that opening the
+        // XSD in the default charset it going to let us search for the targetNamespace
+        // declaration. This will work in ascii-derived charsets like UTF-8, but will NOT
+        // work for UTF-16. 
+        // 
+        std::ostringstream oss;
+        const char* uri = getTargetNamespaceURIFromXMLSchemaFile(targetSchemaFile);
+        oss << uri << " " << targetSchemaFile;
+        const char* schemaLocationPairs = strdup(oss.str().c_str());
+        parser->setProperty(
+                XMLUni::fgXercesSchemaExternalSchemaLocation,
+                XMLString::transcode(schemaLocationPairs));
+    }
     //
     //  Create our SAX handler object and install it on the parser, as the
     //  document and error handler.
@@ -238,6 +386,7 @@ int main(int argC, char* argV[])
     SAX2CountHandlers handler;
     parser->setContentHandler(&handler);
     parser->setErrorHandler(&handler);
+    parser->setLexicalHandler(&handler);
 
     //
     //  Get the starting time and kick off the parse of the indicated
@@ -288,6 +437,12 @@ int main(int argC, char* argV[])
         {
             const unsigned long startMillis = XMLPlatformUtils::getCurrentMillis();
             parser->parse(xmlFile);
+            if (handler.getWithDTD()) {
+                parser->setProperty(XMLUni::fgXercesScannerName, (void *)XMLUni::fgDGXMLScanner);
+                parser->parse(xmlFile);
+            }
+            // XERCES_STD_QUALIFIER cout << "withDTD: " << handler.getWithDTD() << std::endl;
+
             const unsigned long endMillis = XMLPlatformUtils::getCurrentMillis();
             duration = endMillis - startMillis;
         }
@@ -344,3 +499,5 @@ int main(int argC, char* argV[])
         return 0;
 
 }
+
+
