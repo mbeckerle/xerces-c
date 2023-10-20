@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schema
+  xmlns:xs='http://www.w3.org/2001/XMLSchema'
+  xmlns='http://www.w3.org/2001/XMLSchema'
+  xmlns:p="urn:p"
+  targetNamespace="urn:p"
+  elementFormDefault="unqualified">
+
+ <import namespace="http://www.w3.org/XML/1998/namespace">
+   <annotation>
+     <documentation>
+        The schemaLocation of the relevant file is
+        "http://www.w3.org/2001/xml.xsd"; however,
+        we don't want to assume people are always
+        connected to the 'net when playing with this file.
+     </documentation>
+   </annotation>
+ </import>
+
+ <element name="personnel">
+  <complexType>
+   <sequence>
+     <element name="person" type="p:personType" minOccurs='1' maxOccurs='unbounded'/>
+   </sequence>
+  </complexType>
+
+  <unique name="unique1">
+   <selector xpath="person"/>
+   <field xpath="name/given"/>
+   <field xpath="name/family"/>
+  </unique>
+  <key name='empid'>
+   <selector xpath="person"/>
+   <field xpath="@id"/>
+  </key>
+  <keyref name="keyref1" refer='p:empid'>
+   <selector xpath="person"/>
+   <field xpath="link/@manager"/>
+  </keyref>
+
+ </element>
+
+  <complexType name="personType">
+   <sequence>
+     <element name="name" type="p:nameType"/>
+     <element name="email" type="xs:string" minOccurs='0' maxOccurs='unbounded'/>
+     <element name="url" type="p:urlType" minOccurs='0' maxOccurs='unbounded'/>
+     <element name="link" type="p:linkType"  minOccurs='0' maxOccurs='1'/>
+   </sequence>
+   <attribute name="id"  type="xs:ID" use='required'/>
+   <attribute name="note" type="xs:string"/>
+   <attribute name="contr" default="false">
+    <simpleType>
+     <restriction base = "xs:string">
+       <enumeration value="true"/>
+       <enumeration value="false"/>
+     </restriction>
+    </simpleType>
+   </attribute>
+   <attribute name="salary" type="xs:integer"/>
+   <anyAttribute namespace="http://www.w3.org/XML/1998/namespace" processContents="skip"/>
+  </complexType>
+
+  <complexType name="nameType">
+   <all>
+    <element name="family" type="p:familyType"/>
+    <element name="given" type="p:givenType"/>
+   </all>
+   <anyAttribute namespace="http://www.w3.org/XML/1998/namespace" processContents="skip"/>
+  </complexType>
+
+   <complexType name="familyType">
+     <simpleContent>
+       <extension base='xs:string'>
+          <anyAttribute namespace="http://www.w3.org/XML/1998/namespace" processContents="skip"/>
+        </extension>
+     </simpleContent>
+   </complexType>
+
+   <complexType name="givenType">
+     <simpleContent>
+       <extension base='xs:string'>
+          <anyAttribute namespace="http://www.w3.org/XML/1998/namespace" processContents="skip"/>
+        </extension>
+     </simpleContent>
+   </complexType>
+
+  <complexType name="urlType">
+   <attribute name="href" type="xs:string" default="http://"/>
+  </complexType>
+
+  <complexType name="linkType">
+   <attribute name="manager" type="xs:IDREF"/>
+   <attribute name="subordinates" type="xs:IDREFS"/>
+  </complexType>
+
+ <notation name='gif' public='-//APP/Photoshop/4.0' system='photoshop.exe'/>
+
+</schema>
