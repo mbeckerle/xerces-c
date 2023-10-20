@@ -26,5 +26,6 @@ Xerces_autoconf_config.hpp
 /m4/ltsugar.m4
 /samples/*
 !/samples/src
+!/samples/data
 /tests/*
 !/tests/src

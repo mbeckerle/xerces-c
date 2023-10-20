@@ -66,6 +66,10 @@ public:
         return fSpaceCount;
     }
 
+    bool getWithDTD() const
+    {
+        return withDTD;
+    }
 
     // -----------------------------------------------------------------------
     //  Handlers for the SAX ContentHandler interface
@@ -84,7 +88,12 @@ public:
     void fatalError(const SAXParseException& exc);
     void resetErrors();
 
-
+    inline void startDTD(  const   XMLCh* const
+                                            , const   XMLCh* const
+                                            , const   XMLCh* const)
+    {
+        withDTD = true;
+    }
 private:
     // -----------------------------------------------------------------------
     //  Private data members
@@ -105,4 +114,5 @@ private:
     XMLSize_t       fElementCount;
     XMLSize_t       fSpaceCount;
     bool            fSawErrors;
+    bool            withDTD;
 };

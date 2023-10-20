@@ -39,6 +39,7 @@ SAX2CountHandlers::SAX2CountHandlers() :
     , fElementCount(0)
     , fSpaceCount(0)
     , fSawErrors(false)
+    , withDTD(false)
 {
 }
 
@@ -56,6 +57,16 @@ void SAX2CountHandlers::startElement(const XMLCh* const /* uri */
 {
     fElementCount++;
     fAttrCount += attrs.getLength();
+    int n = 0;
+    for (n = 0; n < attrs.getLength(); n++) {
+        char *type = XMLString::transcode(attrs.getType(n));
+        char *name = XMLString::transcode(attrs.getQName(n));
+        char *value = XMLString::transcode(attrs.getValue(n));
+        // std::cout << "type: " << type << " name: " << name << " value: " << value << std::endl;
+        XMLString::release(&type);
+        XMLString::release(&name);
+        XMLString::release(&value);
+    }
 }
 
 void SAX2CountHandlers::characters(  const   XMLCh* const   /* chars */

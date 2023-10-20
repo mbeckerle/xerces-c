@@ -62,10 +62,39 @@ system ("SAXPrint personal.xml");
 system ("SAXPrint -n -s personal-schema.xml");
 
 #  Run SAX2Count
+#
+# Just echos the usage
 system ("SAX2Count");
+# no validation. Just outputs counts.
 system ("SAX2Count -v=never personal.xml");
+# automatic validation (the default) does only DTD validation
 system ("SAX2Count personal.xml");
+#
+# These files identify a no-namespace schema in the instance XML file
+# using xsi:schemaLocation
+#
 system ("SAX2Count -p personal-schema.xml");
+system ("SAX2Count -p personal-schema-invalid.xml");
+if ($? == 0) {
+    print "FAILED: did not detect invalid data.\n";
+    exit 2;
+}
+#
+# These files do not have an xsi:schemaLocation in the instance
+# so we supply one on the command line
+#
+system ("SAX2Count -noNameSpaceSchema=personal.xsd personal.xml");
+system ("SAX2Count -noNameSpaceSchema=personal.xsd personal-invalid.xml");
+if ($? == 0) {
+    print "FAILED: did not detect invalid data.\n";
+    exit 2;
+}
+system ("SAX2Count -schema=personalNS.xsd personalNS.xml");
+system ("SAX2Count -schema=personalNS.xsd personalNS-invalid.xml");
+if ($? == 0) {
+    print "FAILED: did not detect invalid data.\n";
+    exit 2;
+}
 
 #  Run SAX2Print
 system ("SAX2Print");
